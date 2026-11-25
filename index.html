@@ -1,0 +1,106 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Csvlens | View, sort, filter and convert CSV files</title>
+<meta name="description" content="Open a CSV, sort and filter it, see column stats, and export as JSON, Markdown table or CSV. Runs in your browser, nothing is uploaded.">
+<meta property="og:title" content="Csvlens"><meta property="og:description" content="View, sort, filter and convert CSV. Nothing uploaded."><meta property="og:image" content="og.png"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="og.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%230e7c6b'/%3E%3Cpath d='M15 35h70M15 55h70M15 75h70M40 20v70' stroke='%23fff' stroke-width='6'/%3E%3C/svg%3E">
+<style>
+:root{--t:#0e7c6b;--l:#d9e2e0;--bg:#f4f7f6}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#16302b;font:14px/1.45 "Segoe UI",Calibri,system-ui,sans-serif;height:100vh;display:flex;flex-direction:column}
+.bar{background:var(--t);color:#fff;padding:10px 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.bar h1{margin:0;font-size:20px;font-weight:700}.bar h1 span{opacity:.7;font-weight:400}
+.tb{display:flex;gap:8px;padding:10px 16px;background:#fff;border-bottom:1px solid var(--l);flex-wrap:wrap;align-items:center}
+button,select{font:600 13px inherit;font-family:inherit;background:#fff;border:1px solid #b7c7c3;border-radius:4px;padding:6px 12px;cursor:pointer;color:#16302b}
+button.p{background:var(--t);color:#fff;border-color:var(--t)}
+input[type=search]{border:1px solid #b7c7c3;border-radius:4px;padding:6px 10px;min-width:200px;font:13px inherit;font-family:inherit}
+.main{flex:1;display:grid;grid-template-columns:1fr 260px;min-height:0}
+@media(max-width:800px){.main{grid-template-columns:1fr}.side{display:none}}
+.gridw{overflow:auto;background:#fff}
+table{border-collapse:collapse;font-size:13px;width:max-content;min-width:100%}
+th,td{border:1px solid var(--l);padding:5px 10px;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis}
+th{position:sticky;top:0;background:#e8f0ee;cursor:pointer;text-align:left;user-select:none;z-index:1}
+th.sel{background:#bfe3da}th .a{color:var(--t)}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+td.rn,th.rn{background:#e8f0ee;color:#6b8580;text-align:center;position:sticky;left:0;cursor:default}
+tr:nth-child(even) td:not(.rn){background:#f8fbfa}
+.side{border-left:1px solid var(--l);background:#fff;padding:14px;overflow:auto}
+.side h3{margin:0 0 8px;font-size:15px}.kv{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dotted var(--l)}
+.kv span:first-child{color:#6b8580}
+.drop{padding:50px;text-align:center;color:#6b8580}
+.st{padding:6px 16px;background:#e8f0ee;font-size:12px;color:#456;border-top:1px solid var(--l)}
+textarea{width:100%;height:80px;border:1px solid #b7c7c3;border-radius:4px;font:12px ui-monospace,Consolas,monospace;margin-top:8px}
+</style></head><body>
+<div class="bar"><h1>Csvlens <span>CSV viewer and converter</span></h1></div>
+<div class="tb">
+ <button class="p" onclick="f.click()">Open CSV</button><input type="file" id="f" accept=".csv,.tsv,.txt" hidden>
+ <button onclick="paste()">Paste</button>
+ <input type="search" id="q" placeholder="Filter rows (all columns)">
+ <select id="ex"><option value="">Export as...</option><option value="csv">CSV (filtered)</option><option value="json">JSON</option><option value="md">Markdown table</option></select>
+ <button onclick="sample()">Sample data</button>
+</div>
+<div class="main"><div class="gridw" id="g"><div class="drop">Drop a CSV file here, press Open CSV, or press Paste.<br>Comma, semicolon and tab are detected automatically. Nothing leaves your device.</div></div>
+<aside class="side" id="side"><h3>Column stats</h3><div class="muted" style="color:#6b8580">Click a column header to sort and see its stats.</div></aside></div>
+<div class="st" id="st">No file</div>
+<script>
+const $=s=>document.querySelector(s);let H=[],R=[],view=[],sc=-1,sd=1,sel=-1;
+function parse(t){
+ t=t.replace(/^\uFEFF/,'');const first=t.split('\n')[0],c={',':0,';':0,'\t':0};for(const ch of first)if(ch in c)c[ch]++;
+ const d=Object.keys(c).sort((a,b)=>c[b]-c[a])[0],rows=[];let r=[],v='',q=false;
+ for(let i=0;i<t.length;i++){const ch=t[i];
+  if(q){if(ch==='"'){if(t[i+1]==='"'){v+='"';i++}else q=false}else v+=ch}
+  else if(ch==='"')q=true;else if(ch===d){r.push(v);v=''}
+  else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&t[i+1]==='\n')i++;r.push(v);rows.push(r);r=[];v=''}
+  else v+=ch}
+ if(v!==''||r.length){r.push(v);rows.push(r)}
+ return rows.filter(x=>x.some(y=>y!==''));
+}
+function load(t){const rows=parse(t);if(!rows.length)return;H=rows[0];R=rows.slice(1).map(r=>{while(r.length<H.length)r.push('');return r});sc=-1;sel=-1;$('#q').value='';apply()}
+const num=v=>v!==''&&!isNaN(+v.replace(/,/g,''))?+v.replace(/,/g,''):NaN;
+function apply(){
+ const q=$('#q').value.toLowerCase();view=R.filter(r=>!q||r.some(c=>c.toLowerCase().includes(q)));
+ if(sc>=0){const allN=view.every(r=>r[sc]===''||!isNaN(num(r[sc])));view=[...view].sort((a,b)=>{const x=a[sc],y=b[sc];return (allN?(num(x)||0)-(num(y)||0):x.localeCompare(y,undefined,{numeric:true}))*sd})}
+ draw();
+}
+function draw(){
+ if(!H.length)return;const nm=H.map((_,i)=>R.length&&R.every(r=>r[i]===''||!isNaN(num(r[i]))));
+ let h='<table><thead><tr><th class="rn">#</th>'+H.map((x,i)=>`<th data-i="${i}" class="${i===sel?'sel':''}">${esc(x)} <span class="a">${sc===i?(sd>0?'▲':'▼'):''}</span></th>`).join('')+'</tr></thead><tbody>';
+ h+=view.slice(0,1000).map((r,j)=>'<tr><td class="rn">'+(j+1)+'</td>'+r.map((c,i)=>`<td class="${nm[i]?'n':''}">${esc(c)}</td>`).join('')+'</tr>').join('')+'</tbody></table>';
+ $('#g').innerHTML=h;$('#st').textContent=`${view.length} of ${R.length} rows, ${H.length} columns`+(view.length>1000?' (showing first 1000)':'');stats();
+}
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function stats(){
+ if(sel<0){$('#side').innerHTML='<h3>Column stats</h3><div style="color:#6b8580">Click a column header to sort and see its stats.</div>';return}
+ const v=view.map(r=>r[sel]),ne=v.filter(x=>x!==''),ns=ne.map(num),isN=ne.length&&ns.every(x=>!isNaN(x));
+ let o=[['Column',H[sel]],['Rows',v.length],['Empty',v.length-ne.length],['Unique',new Set(ne).size],['Type',isN?'number':'text']];
+ if(isN){const s=ns.reduce((a,b)=>a+b,0),so=[...ns].sort((a,b)=>a-b),m=so.length>>1;o.push(['Min',so[0]],['Max',so[so.length-1]],['Sum',+s.toFixed(4)],['Mean',+(s/ns.length).toFixed(4)],['Median',so.length%2?so[m]:(so[m-1]+so[m])/2])}
+ else{const c={};ne.forEach(x=>c[x]=(c[x]||0)+1);Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,5).forEach(([k,n])=>o.push(['Top: '+k,n+'x']))}
+ $('#side').innerHTML='<h3>Column stats</h3>'+o.map(([a,b])=>`<div class="kv"><span>${esc(a)}</span><span>${esc(b)}</span></div>`).join('');
+}
+$('#g').onclick=e=>{const th=e.target.closest('th');if(!th||th.classList.contains('rn'))return;const i=+th.dataset.i;if(sc===i)sd=-sd;else{sc=i;sd=1}sel=i;apply()};
+$('#q').oninput=apply;
+$('#f').onchange=e=>{const fl=e.target.files[0];if(fl)fl.text().then(load)};
+document.body.ondragover=e=>e.preventDefault();document.body.ondrop=e=>{e.preventDefault();const fl=e.dataTransfer.files[0];if(fl)fl.text().then(load)};
+function paste(){const t=prompt('Paste CSV text here');if(t)load(t)}
+const csvq=v=>/[",\n;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;
+$('#ex').onchange=e=>{
+ const k=e.target.value;e.target.value='';if(!k||!H.length)return;let out,name;
+ if(k==='csv'){out=[H,...view].map(r=>r.map(csvq).join(',')).join('\n');name='data.csv'}
+ if(k==='json'){out=JSON.stringify(view.map(r=>Object.fromEntries(H.map((h,i)=>[h,isNaN(num(r[i]))?r[i]:num(r[i])]))),null,2);name='data.json'}
+ if(k==='md'){const m=r=>'| '+r.map(x=>String(x).replace(/\|/g,'\\|')).join(' | ')+' |';out=[m(H),m(H.map(()=>'---')),...view.map(m)].join('\n');name='data.md'}
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([out],{type:'text/plain'}));a.download=name;a.click();
+};
+function sample(){load(`name,course,grade,credits,city
+Ahmed Hassan,Data Structures,88,3,Cairo
+Mona Adel,Calculus,92,4,Giza
+Omar Khaled,Networks,76,3,Helwan
+Sara Mahmoud,Databases,95,3,Alexandria
+Youssef Ali,Data Structures,81,3,Cairo
+Nour Ibrahim,English,90,2,Giza
+Karim Samir,Calculus,69,4,Cairo
+Hana Tarek,Networks,84,3,Tanta
+Mariam Fathy,Databases,98,3,Helwan
+Ziad Nabil,English,73,2,Giza
+Laila Wael,Data Structures,91,3,Alexandria
+"Hossam, Jr.",Calculus,79,4,Cairo`)}
+if(location.search.includes('demo=1')){sample();sc=2;sd=-1;sel=2;apply()}
+</script></body></html>
